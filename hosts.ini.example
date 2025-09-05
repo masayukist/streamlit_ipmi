@@ -1,0 +1,4 @@
+; [hostname]
+; IPMI_IP=192.168.10.1
+; IPMI_USER=test
+; IPMI_PASS=test
