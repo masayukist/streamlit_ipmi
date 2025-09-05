@@ -36,11 +36,14 @@ def main():
 				st.write(f"**{name}** ({host})")
 				ipmi = IPMIManager(host, user, passwd, iftype)
 				cur_stat = None
-				if st.button("Get Status", key=i):
-					cur_stat = ipmi.isPowerOnStatus()
 			with st.container(horizontal=True, vertical_alignment="center", border=False):
-				status = st.empty()
-				status.write(f"Status: **{cur_stat}**")
+				col1, col2 = st.columns(2)
+				with col1:
+					with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", border=False):
+						if st.button("Get Status", key=i):
+							cur_stat = ipmi.isPowerOnStatus()
+						status = st.empty()
+						status.write(f"Status: **{cur_stat}**")
 				if cur_stat == "UP":
 					disabled = ["Up"]
 				elif cur_stat == "DOWN":
@@ -48,18 +51,20 @@ def main():
 				else:
 					disabled = ["Up", "Sd", "Rs"]
 				action = None
-				if st.button('Up', key=i+n_hosts, disabled="Up" in disabled):
-					ipmi.powerUp()
-					action = "Up"
-					status.write(f"Action: **{action}**")
-				if st.button('Shutdown', key=i+n_hosts*2, disabled="Sd" in disabled):
-					ipmi.softShutdown()
-					action = "Shutdown"
-					status.write(f"Action: **{action}**")
-				if st.button('Reset', key=i+n_hosts*3, disabled="Rs" in disabled):
-					ipmi.hardReset()
-					action = "Shutdown"
-					status.write(f"Action: **{action}**")
+				with col2:
+					with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
+						if st.button('Up', key=i+n_hosts, disabled="Up" in disabled):
+							ipmi.powerUp()
+							action = "Up"
+							status.write(f"Action: **{action}**")
+						if st.button('Shutdown', key=i+n_hosts*2, disabled="Sd" in disabled):
+							ipmi.softShutdown()
+							action = "Shutdown"
+							status.write(f"Action: **{action}**")
+						if st.button('Reset', key=i+n_hosts*3, disabled="Rs" in disabled):
+							ipmi.hardReset()
+							action = "Shutdown"
+							status.write(f"Action: **{action}**")
 
 if __name__=="__main__":
 	main()
