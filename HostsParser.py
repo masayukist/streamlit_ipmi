@@ -10,8 +10,8 @@ def read():
 	config.read("hosts.ini")
 
 def get_host_data():
-	if not config:
-		read()
+	# if not config:
+	read()
 	l = []
 	items = ["IPMI_IP", "IPMI_USER", "IPMI_PASS", "IF_TYPE"]
 	for x in config.sections():
