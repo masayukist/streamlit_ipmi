@@ -55,7 +55,7 @@ class IPMIManager(object):
 			status = self.getChassisStatus()
 		except pyipmi.errors.IpmiConnectionError as e:
 			return f"IPMI Connection Error"
-		return "UP" if status.power_on else "DOWN"
+		return "Up" if status.power_on else "Down"
 	
 	def powerDown(self):
 		self.connect()
