@@ -76,7 +76,7 @@ class IPMIManager(object):
 def main():
 	from HostsParser import get_host_data
 
-	hostlist = get_host_data()
+	hostlist = get_host_data("hosts.ini")
 
 	for x in sorted(hostlist, key=lambda x:x["hostname"]):
 		hostname = x["hostname"]
