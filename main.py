@@ -4,6 +4,7 @@ import time
 import streamlit as st
 
 from IPMIManager import IPMIManager
+import pings
 
 opening_markdown = """
 ### How to
@@ -36,25 +37,25 @@ def single_host_container(hostdic):
 			except KeyError:
 				auto_status = False
 			if auto_status:
-				cur_stat = ipmi.isPowerOnStatus()
+				stat_ipmi = ipmi.isPowerOnStatus()
 			else:
-				cur_stat = None
+				stat_ipmi = "?"
 		with st.container(horizontal=True, vertical_alignment="center", border=False):
 			col1, col2 = st.columns(2)
 			with col1:
 				with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", border=False):
 					if st.button("Get Status", key=f"{name}-getter", disabled=auto_status):
-						cur_stat = ipmi.isPowerOnStatus()
+						stat_ipmi = ipmi.isPowerOnStatus()
 					status = st.empty()
-					if cur_stat == "Up":
+					if stat_ipmi == "Up":
 						disabled = ["Up"]
-						status_str = f"Status: **:red[Up]**"
-					elif cur_stat == "Down":
+						status_str = f"Machine: **:red[Up]**"
+					elif stat_ipmi == "Down":
 						disabled = ["Sd", "Rs"]
-						status_str = f"Status: **:blue[Down]**"
+						status_str = f"Machine: **:blue[Down]**"
 					else:
 						disabled = ["Up", "Sd", "Rs"]
-						status_str = f"Status: **{cur_stat}**"
+						status_str = f"Machine: **{stat_ipmi}**"
 			with col2:
 				with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
 					if st.button('Start', key=f"{name}-start", disabled="Up" in disabled):
