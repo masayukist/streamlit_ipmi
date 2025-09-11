@@ -1,3 +1,6 @@
+; title = XXX clusters
+; note = comments for this cluster
+
 ; [hostname]
 ; IPMI_IP=192.168.10.1
 ; IPMI_USER=test

@@ -73,16 +73,9 @@ class IPMIManager(object):
 		self.connect()
 		return self.connection.chassis_control_soft_shutdown()
 
-def main():
-	from HostsParser import get_host_data
-
-	hostlist = get_host_data("hosts.ini")
-
-	for x in sorted(hostlist, key=lambda x:x["hostname"]):
-		hostname = x["hostname"]
-		ipmiman = IPMIManager(x["IPMI_IP"], x["IPMI_USER"], x["IPMI_PASS"], x["IF_TYPE"])
-		status = ipmiman.isPowerOnStatus()
-		print(f"{hostname}\t{status}")
+def test():
+	status = IPMIManager("epyc-ipmi.cal.is.tohoku.ac.jp", "ADMIN", "ADMIN", "lanplus").isPowerOnStatus()
+	print(f"epyc\t{status}")
 
 if __name__=="__main__":
-	main()
+	test()

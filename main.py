@@ -3,7 +3,6 @@
 import time
 import streamlit as st
 
-from HostsParser import get_host_data
 from IPMIManager import IPMIManager
 
 opening_markdown = """
@@ -137,30 +136,31 @@ class ClusterPage(object):
 
 	def title(self):
 		return self.title_str
-	
+
 	def render(self):
 		st.header(self.title())
 		if self.note_str:
-			st.markdown(f"**:red[{self.note_str}]**")
+			st.markdown(f"Note: {self.note_str}")
 		for d in self.hosts_dic:
 			single_host_container(d)
 	
 def main():
-	mq = ClusterPage("hosts_mq.ini")
-	storage = ClusterPage("hosts_storage.ini")
-	r531 = ClusterPage("hosts_531.ini")
-	zoo = ClusterPage("hosts_zoo.ini")
+	curdir = Path(".")
+	inifiles_name = curdir.glob('*.ini')
+	pages = []
+	for fname in inifiles_name:
+		pages.append(ClusterPage(fname))
+	stlpages = []
+	i = 0
+	for p in pages:
+		stlpages.append(st.Page(p.render, title=p.title(), url_path=f"page_{i}"))
+		i += 1
 
 	pg = st.navigation({
-		"Home": [
+		"": [
 			st.Page(index, title="Home"),
 		],
-		"Places": [
-			st.Page(r531.render, title=r531.title(), url_path="room531"),
-			st.Page(zoo.render, title=zoo.title(), url_path="zoo"),
-			st.Page(mq.render, title=mq.title(), url_path="mq"),
-			st.Page(storage.render, title=storage.title(), url_path="storage")
-		]
+		"Groups": stlpages
 	})
 	pg.run()
 
