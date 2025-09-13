@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import streamlit as st
+import time
 
 opening_markdown = """
 ### How to
