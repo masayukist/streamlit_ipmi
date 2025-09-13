@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 
-import time
 import streamlit as st
-
-from IPMIManager import IPMIManager
-import pings
 
 opening_markdown = """
 ### How to
@@ -19,6 +15,24 @@ note_markdown = """
   - no jobs are running.
 - Resetting should be considered only as a last resort when the host does not respond.
 """
+
+def pmindex():
+	st.title("Server Power Management")
+	st.markdown(opening_markdown)
+
+	try:
+		check_default = st.session_state["auto_status"]
+	except KeyError:
+		check_default = False
+
+	if st.checkbox("Get status automatically", value=check_default):
+		st.session_state["auto_status"] = True
+	else:
+		st.session_state["auto_status"] = False
+
+	st.markdown(note_markdown)
+
+from IPMIManager import IPMIManager
 
 def single_host_container(hostdic):
 	name = hostdic["hostname"]
@@ -81,22 +95,6 @@ def single_host_container(hostdic):
 						status_str = f"Status: **:red[Reset sent]**"
 			status.write(status_str)
 
-def index():
-	st.title("Server Power Management")
-	st.markdown(opening_markdown)
-
-	try:
-		check_default = st.session_state["auto_status"]
-	except KeyError:
-		check_default = False
-
-	if st.checkbox("Get status automatically", value=check_default):
-		st.session_state["auto_status"] = True
-	else:
-		st.session_state["auto_status"] = False
-
-	st.markdown(note_markdown)
-
 import configparser
 from pathlib import Path
 
@@ -144,26 +142,16 @@ class ClusterPage(object):
 			st.markdown(f"Note: {self.note_str}")
 		for d in self.hosts_dic:
 			single_host_container(d)
-	
-def main():
+
+def get_custer_page_list():
 	curdir = Path(".")
-	inifiles_name = curdir.glob('*.ini')
+	inifiles_name = sorted(curdir.glob('*.ini'))
 	pages = []
 	for fname in inifiles_name:
 		pages.append(ClusterPage(fname))
-	stlpages = []
+	pmpages = []
 	i = 0
 	for p in pages:
-		stlpages.append(st.Page(p.render, title=p.title(), url_path=f"page_{i}"))
+		pmpages.append(st.Page(p.render, title=p.title(), url_path=f"page_{i}"))
 		i += 1
-
-	pg = st.navigation({
-		"": [
-			st.Page(index, title="Home"),
-		],
-		"Groups": stlpages
-	})
-	pg.run()
-
-if __name__=="__main__":
-	main()
+	return pmpages
