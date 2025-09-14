@@ -65,7 +65,8 @@ def single_host_container(hostdic):
 				auto_status = False
 			if auto_status:
 				stat_ipmi = ipmiman.isPowerOnStatus()
-				stat_ping = "Up" if pingman.is_reached() else "Down"
+				if not stat_ipmi == "Down":
+					stat_ping = "Up" if pingman.is_reached() else "Down"
 			else:
 				stat_ipmi = "?"
 				stat_ping = "?"
@@ -78,17 +79,18 @@ def single_host_container(hostdic):
 				with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", border=False):
 					if st.button("Get Status", key=f"{name}-getter", disabled=auto_status):
 						stat_ipmi = ipmiman.isPowerOnStatus()
-						stat_ping = "Up" if pingman.is_reached() else "Down"
-					status = st.empty()
+						if not stat_ipmi == "Down":
+							stat_ping = "Up" if pingman.is_reached() else "Down"
+					status = st.text("")
 					if stat_ipmi == "Up":
 						disabled = ["Up"]
-						status_str = f"Machine Up / OS {stat_ping}"
+						status_str = f"Status: Machine Up / OS {stat_ping}"
 					elif stat_ipmi == "Down":
 						disabled = ["Sd", "Rs"]
-						status_str = f"Machine Down / OS {stat_ping}"
+						status_str = f"Status: Machine Down"
 					else:
 						disabled = ["Up", "Sd", "Rs"]
-						status_str = f"Machine {stat_ipmi} / OS {stat_ping}"
+						status_str = f"Status: Machine {stat_ipmi} / OS {stat_ping}"
 			with col2:
 				with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
 					if st.button('Start', key=f"{name}-start", disabled="Up" in disabled):
@@ -100,7 +102,7 @@ def single_host_container(hostdic):
 								st.rerun()
 							else:
 								stat_ping = "Up" if pingman.is_reached() else "Down"
-								status_str = f"Machine Up / OS {stat_ping}"
+								status_str = f"Status: Machine Up / OS {stat_ping}"
 					if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled):
 						with st.spinner(f"Shutting down..."):
 							ipmiman.softShutdown()
@@ -109,11 +111,10 @@ def single_host_container(hostdic):
 							if auto_status:
 								st.rerun()
 							else:
-								stat_ping = "Up" if pingman.is_reached() else "Down"
-								status_str = f"Machine Down / OS {stat_ping}"
+								status_str = f"Status: Machine Down"
 					if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled):
 						ipmiman.hardReset()
-						status_str = f"Machine Reset Sent"
+						status_str = f"Status: Hard Reset Sent"
 			status.write(status_str)
 
 import configparser
