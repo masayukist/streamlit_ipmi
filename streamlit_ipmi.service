@@ -1,0 +1,13 @@
+[Unit]
+Description=Streamlit server
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/streamlit/streamlit_ipmi
+ExecStart=/srv/streamlit/streamlit_ipmi/streamlit_ipmi.bash
+TimeoutSec=300
+ExecStop=/bin/kill -WINCH ${MAINPID}
+
+[Install]
+WantedBy=multi-user.target
