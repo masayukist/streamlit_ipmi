@@ -34,66 +34,86 @@ def pmindex():
 	st.markdown(note_markdown)
 
 from IPMIManager import IPMIManager
+import pings
+
+class PingManager(object):
+	def __init__(self, ip):
+		self.ip = ip
+
+	def is_reached(self):
+		self.pingobj = pings.Ping()
+		self.ret = self.pingobj.ping(self.ip)
+		return self.ret.is_reached()
 
 def single_host_container(hostdic):
 	name = hostdic["hostname"]
-	host_ip = hostdic["IP"]
-	ipmi_ip = hostdic["IPMI_IP"]
-	user = hostdic["IPMI_USER"]
-	passwd = hostdic["IPMI_PASS"]
-	iftype = hostdic["IF_TYPE"]
+	host_ip = hostdic["ip"]
+	ipmi_ip = hostdic["ipmi_ip"]
+	user = hostdic["ipmi_user"]
+	passwd = hostdic["ipmi_pass"]
+	iftype = hostdic["if_type"]
+
+	ipmiman = IPMIManager(ipmi_ip, user, passwd, iftype)
+	pingman = PingManager(host_ip)
 
 	with st.container(horizontal=False, vertical_alignment="center", border=True):
 		with st.container(horizontal=True, vertical_alignment="center", border=False):
 			st.html(f'<b>{name}</b> (<a target="_blank" rel="noopener noreferrer" href="https://{ipmi_ip}">IPMI</a>)')
-			ipmi = IPMIManager(ipmi_ip, user, passwd, iftype)
 			try:
 				auto_status = st.session_state["auto_status"]
 			except KeyError:
 				auto_status = False
 			if auto_status:
-				stat_ipmi = ipmi.isPowerOnStatus()
+				stat_ipmi = ipmiman.isPowerOnStatus()
+				stat_ping = "Up" if pingman.is_reached() else "Down"
 			else:
 				stat_ipmi = "?"
+				stat_ping = "?"
+		if "note" in hostdic and hostdic["note"].strip() != "":
+			with st.container(horizontal=True, vertical_alignment="center", border=False):
+				st.markdown(f"Note: {hostdic['note']}")
 		with st.container(horizontal=True, vertical_alignment="center", border=False):
 			col1, col2 = st.columns(2)
 			with col1:
 				with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", border=False):
 					if st.button("Get Status", key=f"{name}-getter", disabled=auto_status):
-						stat_ipmi = ipmi.isPowerOnStatus()
+						stat_ipmi = ipmiman.isPowerOnStatus()
+						stat_ping = "Up" if pingman.is_reached() else "Down"
 					status = st.empty()
 					if stat_ipmi == "Up":
 						disabled = ["Up"]
-						status_str = f"Machine: **:red[Up]**"
+						status_str = f"Machine Up / OS {stat_ping}"
 					elif stat_ipmi == "Down":
 						disabled = ["Sd", "Rs"]
-						status_str = f"Machine: **:blue[Down]**"
+						status_str = f"Machine Down / OS {stat_ping}"
 					else:
 						disabled = ["Up", "Sd", "Rs"]
-						status_str = f"Machine: **{stat_ipmi}**"
+						status_str = f"Machine {stat_ipmi} / OS {stat_ping}"
 			with col2:
 				with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
 					if st.button('Start', key=f"{name}-start", disabled="Up" in disabled):
 						with st.spinner(f"Starting..."):
-							ipmi.powerUp()
-							while ipmi.isPowerOnStatus() == "Down":
+							ipmiman.powerUp()
+							while ipmiman.isPowerOnStatus() == "Down":
 								time.sleep(5)
 							if auto_status:
 								st.rerun()
 							else:
-								status_str = f"Status: **:red[Up]**"
+								stat_ping = "Up" if pingman.is_reached() else "Down"
+								status_str = f"Machine Up / OS {stat_ping}"
 					if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled):
 						with st.spinner(f"Shutting down..."):
-							ipmi.softShutdown()
-							while ipmi.isPowerOnStatus() == "Up":
+							ipmiman.softShutdown()
+							while ipmiman.isPowerOnStatus() == "Up":
 								time.sleep(5)
 							if auto_status:
 								st.rerun()
 							else:
-								status_str = f"Status: **:blue[Down]**"
+								stat_ping = "Up" if pingman.is_reached() else "Down"
+								status_str = f"Machine Down / OS {stat_ping}"
 					if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled):
-						ipmi.hardReset()
-						status_str = f"Status: **:red[Reset sent]**"
+						ipmiman.hardReset()
+						status_str = f"Machine Reset Sent"
 			status.write(status_str)
 
 import configparser
@@ -121,8 +141,7 @@ class ClusterPage(object):
 				continue
 			h = {}
 			h["hostname"] = x
-			for y in items:
-				h[y] = parser[x][y]
+			h = dict(**h, **parser[x])
 			self.hosts_dic.append(h)
 
 		try:
