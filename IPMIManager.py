@@ -3,6 +3,7 @@
 import pyipmi
 import pyipmi.interfaces
 
+from datetime import datetime
 
 class IPMIManager(object):
 
@@ -13,6 +14,8 @@ class IPMIManager(object):
 		self.iftype = iftype
 		self.interface = None
 		self.connection = None
+		self.dcmi_power_reading_rsp = None
+		self.dcmi_requested_at = None
 
 	def connect(self):
 		if self.connection:
@@ -73,9 +76,94 @@ class IPMIManager(object):
 		self.connect()
 		return self.connection.chassis_control_soft_shutdown()
 
+	def getDcmiPowerRead(self):
+		self.connect()
+		update_dcmi_power = False
+		if not self.dcmi_requested_at:
+			update_dcmi_power = True
+		elif (datetime.now() - self.dcmi_requested_at).seconds > 10:
+			update_dcmi_power = True
+		elif not self.dcmi_power_reading_rsp:
+			update_dcmi_power = True
+		if not update_dcmi_power:
+			return
+		try:
+			self.dcmi_power_reading_rsp = self.connection.get_power_reading(mode=1)
+		except pyipmi.errors.CompletionCodeError as e:
+			return
+		except pyipmi.errors.IpmiConnectionError as e:
+			return
+		self.dcmi_requested_at = datetime.now()
+
+	def getCurrentPower(self):
+		self.getDcmiPowerRead()
+		if not self.dcmi_power_reading_rsp:
+			return None
+		return self.dcmi_power_reading_rsp.current_power
+	
+	def getAveragePower(self):
+		self.getDcmiPowerRead()
+		if not self.dcmi_power_reading_rsp:
+			return None
+		return self.dcmi_power_reading_rsp.average_power
+
+	def getMinimumPower(self):
+		self.getDcmiPowerRead()
+		if not self.dcmi_power_reading_rsp:
+			return None
+		return self.dcmi_power_reading_rsp.minimum_power
+
+	def getMaximumPower(self):
+		self.getDcmiPowerRead()
+		if not self.dcmi_power_reading_rsp:
+			return None
+		return self.dcmi_power_reading_rsp.minimum_power
+
+	def getPowerPeriod(self):
+		self.getDcmiPowerRead()
+		if not self.dcmi_power_reading_rsp:
+			return None
+		return self.dcmi_power_reading_rsp.period
+
+
+from pathlib import Path
+import configparser
+
 def test():
-	status = IPMIManager("epyc-ipmi.cal.is.tohoku.ac.jp", "ADMIN", "ADMIN", "lanplus").isPowerOnStatus()
-	print(f"epyc\t{status}")
+	curdir = Path(".")
+	inifiles_name = sorted(curdir.glob('*.ini'))
+
+	host_list = []
+
+	for f in inifiles_name:
+		parser = configparser.ConfigParser()
+		parser.read(f)
+
+		items = ["IP", "IPMI_IP", "IPMI_USER", "IPMI_PASS", "IF_TYPE"]
+		for x in parser.sections():
+			if x == "Page":
+				continue
+			h = {}
+			h["hostname"] = x
+			h = dict(**h, **parser[x])
+			host_list.append(h)
+
+	sum_current_power = 0
+	for host in host_list:
+		name = host["hostname"]
+		ip = host["ip"]
+		ipmi_ip = host["ipmi_ip"]
+		user = host["ipmi_user"]
+		passwd = host["ipmi_pass"]
+		iftype = host["if_type"]
+
+		ipmiman = IPMIManager(ipmi_ip, user, passwd, iftype)
+		cur_power = ipmiman.getCurrentPower()
+		power_str = f"{cur_power:4}" if type(cur_power) == int else " n/a"
+		print(f"cur: {power_str} W ({name})")
+		sum_current_power += ipmiman.getCurrentPower() if ipmiman.getCurrentPower() else 0
+
+	print(f"Total current power: {sum_current_power} W")
 
 if __name__=="__main__":
 	test()
