@@ -2,6 +2,7 @@
 
 import streamlit as st
 import time
+from datetime import datetime
 
 opening_markdown = """
 ### How to
@@ -45,6 +46,77 @@ class PingManager(object):
 		self.ret = self.pingobj.ping(self.ip)
 		return self.ret.is_reached()
 
+class MachineStatus(object):
+	def __init__(self, ipmiman, pingman):
+		self.chasis = False
+		self.os = False
+		self.at = None
+		self.error = False
+		self.cause = None
+		self.ipmiman = ipmiman
+		self.pingman = pingman
+
+	def __str__(self):
+		if self.at is None:
+			return ""
+		elif self.error:
+			return f'{self.cause}'
+		if not self.chasis:
+			return ":blue[Machine Down]"
+		if not self.os:
+			return ":red[Machine Up] / :blue[OS Down]"
+		return f':red[Machine Up] / :red[OS Up]'
+
+	def set_machine_down(self):
+		self.chasis = False
+		self.os = False
+		self.at = datetime.now()
+
+	def set_machine_up(self):
+		self.chasis = True
+		self.at = datetime.now()
+
+	def set_os_up(self):
+		self.chasis = True
+		self.os = True
+		self.at = datetime.now()
+
+	def set_os_down(self):
+		self.os = False
+		self.at = datetime.now()
+
+	def set_error(self, cause):
+		self.error = True
+		self.cause = cause
+		self.at = datetime.now()
+
+	def is_machine_up(self):
+		return self.chasis
+
+	def is_os_up(self):
+		return self.os
+
+	def is_error(self):
+		return self.error
+
+	def get_timestamp_str(self):
+		if self.at:
+			return self.at.strftime('%Y/%m/%d %H:%M:%S')
+		return None
+
+	def get(self):
+		if self.ipmiman.isPowerOn():
+			self.set_machine_up()
+			if self.pingman.is_reached():
+				self.set_os_up()
+			else:
+				self.set_os_down()
+		else:
+			if self.ipmiman.isError():
+				self.set_error(self.ipmiman.getCause())
+			else:
+				self.set_machine_down()
+
 def single_host_container(hostdic):
 	name = hostdic["hostname"]
 	host_ip = hostdic["ip"]
@@ -57,22 +129,19 @@ def single_host_container(hostdic):
 
 	ipmiman = IPMIManager(ipmi_ip, user, passwd, iftype)
 	pingman = PingManager(host_ip)
+	machine_status = MachineStatus(ipmiman, pingman)
 
 	try:
 		auto_status = st.session_state["auto_status"]
 	except KeyError:
 		auto_status = False
 	if auto_status:
-		stat_ipmi = ipmiman.isPowerOnStatus()
-		if not stat_ipmi == "Down":
-			stat_ping = "Up" if pingman.is_reached() else "Down"
-	else:
-		stat_ipmi = "?"
-		stat_ping = "?"
+		machine_status.get()
 
 	with st.container(horizontal=False, vertical_alignment="center", border=True):
-		with st.container(horizontal=True, vertical_alignment="center", border=False):
+		with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", border=False):
 			st.html(f'<b>{name}</b> (<a target="_blank" rel="noopener noreferrer" href="https://{ipmi_ip}">IPMI</a>)')
+			lastupdate = st.caption("")
 		if note:
 			with st.container(horizontal=True, vertical_alignment="center", border=False):
 				st.markdown(f"Note: {hostdic['note']}")
@@ -81,47 +150,46 @@ def single_host_container(hostdic):
 			with col1:
 				with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", border=False):
 					if st.button("Get Status", key=f"{name}-getter", disabled=auto_status):
-						stat_ipmi = ipmiman.isPowerOnStatus()
-						if not stat_ipmi == "Down":
-							stat_ping = "Up" if pingman.is_reached() else "Down"
+						machine_status.get()
 					status = st.text("")
-					if stat_ipmi == "Up":
+					if machine_status.is_error() or not machine_status.get_timestamp_str():
+						disabled_btn = ["Up", "Sd", "Rs"]
+					elif machine_status.is_machine_up():
 						disabled_btn = ["Up"]
-						status_str = f"Status: Machine Up / OS {stat_ping}"
-					elif stat_ipmi == "Down":
-						disabled_btn = ["Sd", "Rs"]
-						status_str = f"Status: Machine Down"
 					else:
-						disabled_btn = ["Up", "Sd", "Rs"]
-						status_str = f"Status: Machine {stat_ipmi} / OS {stat_ping}"
-					if disable_all:
-						disabled_btn = ["Up", "Sd", "Rs"]
+						disabled_btn = ["Sd", "Rs"]
 			with col2:
 				with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
 					if not disable_all:
 						if st.button('Start', key=f"{name}-start", disabled="Up" in disabled_btn):
 							with st.spinner(f"Starting..."):
 								ipmiman.powerUp()
-								while ipmiman.isPowerOnStatus() == "Down":
+								while machine_status.is_machine_up() == False:
 									time.sleep(5)
-								if auto_status:
-									st.rerun()
-								else:
-									stat_ping = "Up" if pingman.is_reached() else "Down"
-									status_str = f"Status: Machine Up / OS {stat_ping}"
+									machine_status.get()
+							with st.spinner(f"Waiting for OS..."):
+								while machine_status.is_os_up() == False:
+									time.sleep(5)
+									machine_status.get()
+							if auto_status:
+								st.rerun()
 						if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled_btn):
 							with st.spinner(f"Shutting down..."):
 								ipmiman.softShutdown()
-								while ipmiman.isPowerOnStatus() == "Up":
+								while machine_status.is_os_up():
 									time.sleep(5)
-								if auto_status:
-									st.rerun()
-								else:
-									status_str = f"Status: Machine Down"
+									machine_status.get()
+								while machine_status.is_machine_up():
+									time.sleep(5)
+									machine_status.get()
+							if auto_status:
+								st.rerun()
 						if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled_btn):
 							ipmiman.hardReset()
-							status_str = f"Status: Hard Reset Sent"
-			status.write(status_str)
+							machine_status.get()
+			status.markdown(machine_status)
+			if machine_status.get_timestamp_str():
+				lastupdate.badge(f"Get status at {machine_status.get_timestamp_str()}",icon=":material/check:", color="grey")
 
 import configparser
 from pathlib import Path
