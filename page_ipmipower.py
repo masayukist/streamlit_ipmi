@@ -98,28 +98,29 @@ def single_host_container(hostdic):
 						disabled_btn = ["Up", "Sd", "Rs"]
 			with col2:
 				with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
-					if st.button('Start', key=f"{name}-start", disabled="Up" in disabled_btn):
-						with st.spinner(f"Starting..."):
-							ipmiman.powerUp()
-							while ipmiman.isPowerOnStatus() == "Down":
-								time.sleep(5)
-							if auto_status:
-								st.rerun()
-							else:
-								stat_ping = "Up" if pingman.is_reached() else "Down"
-								status_str = f"Status: Machine Up / OS {stat_ping}"
-					if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled_btn):
-						with st.spinner(f"Shutting down..."):
-							ipmiman.softShutdown()
-							while ipmiman.isPowerOnStatus() == "Up":
-								time.sleep(5)
-							if auto_status:
-								st.rerun()
-							else:
-								status_str = f"Status: Machine Down"
-					if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled_btn):
-						ipmiman.hardReset()
-						status_str = f"Status: Hard Reset Sent"
+					if not disable_all:
+						if st.button('Start', key=f"{name}-start", disabled="Up" in disabled_btn):
+							with st.spinner(f"Starting..."):
+								ipmiman.powerUp()
+								while ipmiman.isPowerOnStatus() == "Down":
+									time.sleep(5)
+								if auto_status:
+									st.rerun()
+								else:
+									stat_ping = "Up" if pingman.is_reached() else "Down"
+									status_str = f"Status: Machine Up / OS {stat_ping}"
+						if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled_btn):
+							with st.spinner(f"Shutting down..."):
+								ipmiman.softShutdown()
+								while ipmiman.isPowerOnStatus() == "Up":
+									time.sleep(5)
+								if auto_status:
+									st.rerun()
+								else:
+									status_str = f"Status: Machine Down"
+						if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled_btn):
+							ipmiman.hardReset()
+							status_str = f"Status: Hard Reset Sent"
 			status.write(status_str)
 
 import configparser
