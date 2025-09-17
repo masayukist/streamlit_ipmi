@@ -52,6 +52,8 @@ def single_host_container(hostdic):
 	user = hostdic["ipmi_user"]
 	passwd = hostdic["ipmi_pass"]
 	iftype = hostdic["if_type"]
+	disable_all = hostdic["disabled"]
+	note = hostdic["note"]
 
 	ipmiman = IPMIManager(ipmi_ip, user, passwd, iftype)
 	pingman = PingManager(host_ip)
@@ -70,7 +72,7 @@ def single_host_container(hostdic):
 			else:
 				stat_ipmi = "?"
 				stat_ping = "?"
-		if "note" in hostdic and hostdic["note"].strip() != "":
+		if note:
 			with st.container(horizontal=True, vertical_alignment="center", border=False):
 				st.markdown(f"Note: {hostdic['note']}")
 		with st.container(horizontal=True, vertical_alignment="center", border=False):
@@ -83,17 +85,19 @@ def single_host_container(hostdic):
 							stat_ping = "Up" if pingman.is_reached() else "Down"
 					status = st.text("")
 					if stat_ipmi == "Up":
-						disabled = ["Up"]
+						disabled_btn = ["Up"]
 						status_str = f"Status: Machine Up / OS {stat_ping}"
 					elif stat_ipmi == "Down":
-						disabled = ["Sd", "Rs"]
+						disabled_btn = ["Sd", "Rs"]
 						status_str = f"Status: Machine Down"
 					else:
-						disabled = ["Up", "Sd", "Rs"]
+						disabled_btn = ["Up", "Sd", "Rs"]
 						status_str = f"Status: Machine {stat_ipmi} / OS {stat_ping}"
+					if disable_all:
+						disabled_btn = ["Up", "Sd", "Rs"]
 			with col2:
 				with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center", border=False):
-					if st.button('Start', key=f"{name}-start", disabled="Up" in disabled):
+					if st.button('Start', key=f"{name}-start", disabled="Up" in disabled_btn):
 						with st.spinner(f"Starting..."):
 							ipmiman.powerUp()
 							while ipmiman.isPowerOnStatus() == "Down":
@@ -103,7 +107,7 @@ def single_host_container(hostdic):
 							else:
 								stat_ping = "Up" if pingman.is_reached() else "Down"
 								status_str = f"Status: Machine Up / OS {stat_ping}"
-					if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled):
+					if st.button('Shutdown', key=f"{name}-shutdown", disabled="Sd" in disabled_btn):
 						with st.spinner(f"Shutting down..."):
 							ipmiman.softShutdown()
 							while ipmiman.isPowerOnStatus() == "Up":
@@ -112,7 +116,7 @@ def single_host_container(hostdic):
 								st.rerun()
 							else:
 								status_str = f"Status: Machine Down"
-					if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled):
+					if st.button('Reset', key=f"{name}-reset", disabled="Rs" in disabled_btn):
 						ipmiman.hardReset()
 						status_str = f"Status: Hard Reset Sent"
 			status.write(status_str)
@@ -136,13 +140,18 @@ class ClusterPage(object):
 		parser.read(self.inifile)
 
 		self.hosts_dic = []
-		items = ["IP", "IPMI_IP", "IPMI_USER", "IPMI_PASS", "IF_TYPE"]
 		for x in parser.sections():
 			if x == "Page":
 				continue
 			h = {}
 			h["hostname"] = x
-			h = dict(**h, **parser[x])
+			h["ip"] = parser[x]["ip"]
+			h["ipmi_ip"] = parser[x]["ipmi_ip"]
+			h["ipmi_user"] = parser[x]["ipmi_user"]
+			h["ipmi_pass"] = parser[x]["ipmi_pass"]
+			h["if_type"] = parser[x]["if_type"]
+			h["note"] = parser[x].get("note", None)
+			h["disabled"] = parser[x].getboolean("disabled", False)
 			self.hosts_dic.append(h)
 
 		try:
@@ -173,6 +182,6 @@ def get_custer_page_list():
 	pmpages = []
 	i = 0
 	for p in pages:
-		pmpages.append(st.Page(p.render, title=p.title(), url_path=f"page_{i}"))
+		pmpages.append(st.Page(p.render, title=p.title(), url_path=f"spm{i}"))
 		i += 1
 	return pmpages
