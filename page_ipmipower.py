@@ -58,20 +58,21 @@ def single_host_container(hostdic):
 	ipmiman = IPMIManager(ipmi_ip, user, passwd, iftype)
 	pingman = PingManager(host_ip)
 
+	try:
+		auto_status = st.session_state["auto_status"]
+	except KeyError:
+		auto_status = False
+	if auto_status:
+		stat_ipmi = ipmiman.isPowerOnStatus()
+		if not stat_ipmi == "Down":
+			stat_ping = "Up" if pingman.is_reached() else "Down"
+	else:
+		stat_ipmi = "?"
+		stat_ping = "?"
+
 	with st.container(horizontal=False, vertical_alignment="center", border=True):
 		with st.container(horizontal=True, vertical_alignment="center", border=False):
 			st.html(f'<b>{name}</b> (<a target="_blank" rel="noopener noreferrer" href="https://{ipmi_ip}">IPMI</a>)')
-			try:
-				auto_status = st.session_state["auto_status"]
-			except KeyError:
-				auto_status = False
-			if auto_status:
-				stat_ipmi = ipmiman.isPowerOnStatus()
-				if not stat_ipmi == "Down":
-					stat_ping = "Up" if pingman.is_reached() else "Down"
-			else:
-				stat_ipmi = "?"
-				stat_ping = "?"
 		if note:
 			with st.container(horizontal=True, vertical_alignment="center", border=False):
 				st.markdown(f"Note: {hostdic['note']}")
