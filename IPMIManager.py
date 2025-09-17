@@ -16,6 +16,8 @@ class IPMIManager(object):
 		self.connection = None
 		self.dcmi_power_reading_rsp = None
 		self.dcmi_requested_at = None
+		self.error = False
+		self.cause = None
 
 	def connect(self):
 		if self.connection:
@@ -49,14 +51,24 @@ class IPMIManager(object):
 		try:
 			status = self.getChassisStatus()
 		except pyipmi.errors.IpmiConnectionError as e:
+			self.error = True
+			self.cause = e
 			return False
 		return status.power_on
+
+	def isError(self):
+		return self.error
+
+	def getCause(self):
+		return self.cause
 
 	def isPowerOnStatus(self):
 		self.connect()
 		try:
 			status = self.getChassisStatus()
 		except pyipmi.errors.IpmiConnectionError as e:
+			self.error = True
+			self.cause = e
 			return f"IPMI Connection Error"
 		return "Up" if status.power_on else "Down"
 	
