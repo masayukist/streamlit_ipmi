@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import pyipmi
 import pyipmi.interfaces
 
@@ -22,18 +23,12 @@ class IPMIManager(object):
 	def connect(self):
 		if self.connection:
 			return
+		
 		# Supported interface_types for ipmitool are: 'lan' , 'lanplus', and 'serial-terminal'
 		self.interface = pyipmi.interfaces.create_interface('ipmitool', interface_type=self.iftype)
 		self.connection = pyipmi.create_connection(self.interface)
-
 		self.connection.session.set_session_type_rmcp(self.ip, port=623)
 		self.connection.session.set_auth_type_user(self.user, self.passwd)
-
-		# self.connection.target = pyipmi.Target(
-		# 	ipmb_address=0x82, routing=[(0x81,0x20,0),(0x20,0x82,7)])
-		# self.connection.target = pyipmi.Target(0x82)
-		# self.connection.target.set_routing([(0x81,0x20,0),(0x20,0x82,7)])
-
 		self.connection.session.set_priv_level("ADMINISTRATOR")
 		self.connection.session.establish()
 
@@ -50,9 +45,11 @@ class IPMIManager(object):
 		self.connect()
 		try:
 			status = self.getChassisStatus()
+			self.error = False
+			self.cause = None
 		except pyipmi.errors.IpmiConnectionError as e:
 			self.error = True
-			self.cause = e
+			self.cause = "IPMI Connection Error"
 			return False
 		return status.power_on
 
@@ -66,9 +63,11 @@ class IPMIManager(object):
 		self.connect()
 		try:
 			status = self.getChassisStatus()
+			self.error = False
+			self.cause = None
 		except pyipmi.errors.IpmiConnectionError as e:
 			self.error = True
-			self.cause = e
+			self.cause = "IPMI Connection Error"
 			return f"IPMI Connection Error"
 		return "Up" if status.power_on else "Down"
 	
@@ -101,9 +100,19 @@ class IPMIManager(object):
 			return
 		try:
 			self.dcmi_power_reading_rsp = self.connection.get_power_reading(mode=1)
+			self.error = False
+			self.cause = None
 		except pyipmi.errors.CompletionCodeError as e:
+			self.error = True
+			self.cause = "Completion Code Error"
 			return
 		except pyipmi.errors.IpmiConnectionError as e:
+			self.error = True
+			self.cause = "IPMI Connection Error"
+			return
+		except ValueError as e:
+			self.error = True
+			self.cause = "Value Error"
 			return
 		self.dcmi_requested_at = datetime.now()
 
