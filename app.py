@@ -4,13 +4,13 @@ import time
 import streamlit as st
 
 from page_index import index, debug_state
-from page_ipmipower import pmindex, get_cluster_power_management_page_list, get_cluster_watt_monitor_page_list
+from page_ipmipower import get_cluster_page_list as get_cluster_power_page_list
+from page_ipmiwatt import get_cluster_page_list as get_cluster_watt_page_list
 from page_udhcpd import dhcp_monitor
 
 def main():
-	pmpages = get_cluster_power_management_page_list()
-	pmpages.insert(0, st.Page(pmindex, title="Readme 1st"))
-	pcpages = get_cluster_watt_monitor_page_list()
+	pmpages = get_cluster_power_page_list()
+	pcpages = get_cluster_watt_page_list()
 
 	pg = st.navigation({
 		"": [
