@@ -89,7 +89,11 @@ class Averager(object):
 		self.put_count = 0
 
 from page_ipmipower import ClusterBasePage, IPMIManager
-from SessionStateInterface import DataRecorderSessionStateInterface, ClusterStatisticsSessionStateInterface, PageStatisticsSessionStateInterface
+from SessionStateInterface import (
+	DataRecorderSessionStateInterface,
+	ClusterStatisticsSessionStateInterface,
+	PageStatisticsSessionStateInterface
+)
 
 class ClusterWattPage(ClusterBasePage):
 
@@ -214,7 +218,6 @@ class ClusterWattPage(ClusterBasePage):
 				st.download_button(
 					label="Download", data=self.drec.to_download(), file_name=self.drec.get_fname(),
 					mime="text/csv", icon=":material/download:", disabled=disabled)
-				print(self.drec.get_fname())
 				self.reset_recorded_data = st.button("Reset", disabled=disabled, icon=":material/delete:")
 
 		with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
