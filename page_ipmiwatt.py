@@ -6,6 +6,7 @@ from datetime import datetime
 import time
 
 import numpy
+import pandas as pd
 
 class Averager(object):
 	def __init__(self, num, num_outliers, precision):
@@ -88,6 +89,7 @@ class Averager(object):
 		self.put_count = 0
 
 from page_ipmipower import ClusterBasePage, IPMIManager
+from SessionStateInterface import DataRecorderSessionStateInterface, ClusterStatisticsSessionStateInterface, PageStatisticsSessionStateInterface
 
 class ClusterWattPage(ClusterBasePage):
 
@@ -132,6 +134,13 @@ class ClusterWattPage(ClusterBasePage):
 			ss['auto_iec_interval_count'] = 0
 		if not "manual_duration" in ss:
 			ss["manual_duration"] = 0.0
+
+		if not hasattr(self, "drec"):
+			self.drec = DataRecorderSessionStateInterface(self)
+		if not hasattr(self, "clstat"):
+			self.clstat = ClusterStatisticsSessionStateInterface(self)
+		if not hasattr(self, "pagestat"):
+			self.pagestat = PageStatisticsSessionStateInterface(self)
 		
 		#formats
 		self.total_hosts_field_format = "({} machines)"
@@ -145,12 +154,7 @@ class ClusterWattPage(ClusterBasePage):
 		self.ar_dura = ss["ar_dura"]
 		self.ar_tgte = ss["ar_tgte"]
 
-		#tags to access session_state
 		self.since_date_tag = self.get_urlpath() + "_auto_since_date"
-		self.page_tag = self.get_urlpath() + "_lastupdate"
-		self.clstpw_tag = self.get_urlpath() + "_cluster_power"
-		self.clstnh_tag = self.get_urlpath() + "_cluster_n_hosts"
-
 
 	def ui_render(self):
 		# page's UI
@@ -167,12 +171,13 @@ class ClusterWattPage(ClusterBasePage):
 					value=ar_tgt, placeholder="Type a number...", min_value=1.0, step=1.0, format="%.3f")
 
 			with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
-				self.auto_correct_toggle = st.toggle("Automatic interval error correction")
+				self.auto_correct_toggle = st.toggle("Automatic interval error correction", disabled=not self.auto_refresh_toggle)
 
 			with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
+				disabled = self.auto_correct_toggle or not self.auto_refresh_toggle
 				self.interval_error_correction = st.number_input(
 					"Amount of manual error correction to the target", value=0.0,
-					min_value=-5.0, max_value=5.0, step=0.1, format="%.3f", disabled=self.auto_correct_toggle)
+					min_value=-5.0, max_value=5.0, step=0.1, format="%.3f", disabled=disabled)
 
 			col1, col2 = st.columns(2)
 			with col1:
@@ -200,10 +205,22 @@ class ClusterWattPage(ClusterBasePage):
 						st.caption(f"Next change after:")
 						st.text(f"{20 - ss['auto_iec_interval_count']} refreshes")
 
+		with st.expander(label="Recording"):
+			with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
+				with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
+					self.record_data = st.toggle("Record data")
+					st.text(f"Records: {self.drec.get_id()}")
+					disabled = True if self.drec.get_id() == 0 else False
+				st.download_button(
+					label="Download", data=self.drec.to_download(), file_name=self.drec.get_fname(),
+					mime="text/csv", icon=":material/download:", disabled=disabled)
+				print(self.drec.get_fname())
+				self.reset_recorded_data = st.button("Reset", disabled=disabled, icon=":material/delete:")
+
 		with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
 			refresh = st.button("Manual refresh", disabled=self.auto_refresh_toggle)
-			self.lastupdate_field = st.text(f"Last-updated: {ss.get(self.page_tag)}")
-			self.manualdura_field = st.text(f"Duration: {ss["manual_duration"]:.3f} sec.")
+			self.lastupdate_field = st.text(f"Last-updated: {self.pagestat.lastup()}")
+			self.manualdura_field = st.text(f"Duration: {self.pagestat.duration():.3f} sec.")
 
 		if self.auto_refresh_toggle and self.ar_dura.get() is not None and float(self.ar_dura.get()) > self.target_interval:
 			st.error("The actual duration overcomes the target interval. Please consider increasing the target interval.")
@@ -212,63 +229,66 @@ class ClusterWattPage(ClusterBasePage):
 
 		with st.container(horizontal=True, border=True, horizontal_alignment="distribute"):
 			st.markdown(f"**Total power consumption**")
-			self.total_hosts_field = st.text(self.total_hosts_field_format.format(ss.get(self.clstnh_tag)))
-			self.total_power_field = st.text(self.power_field_format.format(ss.get(self.clstpw_tag)))
+			self.total_hosts_field = st.text(self.total_hosts_field_format.format(self.clstat.total_nhost()))
+			self.total_power_field = st.text(self.power_field_format.format(self.clstat.total_power()))
 
 		self.host_act_check = {}
 		self.host_power_field = {}
 		for d in self.hosts_dic:
 			host = d["hostname"]
-			host_power_tag = "power_val-" + d["hostname"].replace(".", "_")
-				
+
 			with st.container(horizontal=True, border=True, horizontal_alignment="distribute"):
 				self.host_act_check[host] = st.toggle("Activate", key=f"{host}-skip", label_visibility="collapsed")
 				st.markdown(f"**{host}**")
-				self.host_power_field[host] = st.text(self.power_field_format.format(ss.get(host_power_tag)))
+				self.host_power_field[host] = st.text(self.power_field_format.format(self.clstat.host_power(host)))
 
 	def finish_duration_measurement(self):
 		duration_end_time = datetime.now()
 		self.duration = duration_end_time - self.duration_start_time
 		self.ar_dura.put(self.duration.total_seconds())
 		self.duration_field.text(self.duration_field_format.format(self.ar_dura.get_str()))
-		self.manualdura_field.text(f"Duration: {self.duration.total_seconds():.3f} sec.")
-		ss["manual_duration"] = self.duration.total_seconds()
+		self.pagestat.set_duration(self.duration.total_seconds())
+		self.manualdura_field.text(f"Duration: {self.pagestat.duration():.3f} sec.")
 
 	def exec_logic(self):
-		ss[self.page_tag] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-		self.lastupdate_field.text(f"Last-updated: {ss.get(self.page_tag)}")
+		if self.reset_recorded_data:
+			self.drec.reset()
+			st.rerun()
 
-		host_toggle_changed = False
-		total_hosts = 0
-		total_power = 0
+		self.pagestat.set_lastup()
+		self.lastupdate_field.text(f"Last-updated: {self.pagestat.lastup()}")
+
+		self.clstat.clear_touched()
+
 		for d in self.hosts_dic:
 			host = d["hostname"]
-			skipped_tag = "skip-" + d["hostname"].replace(".", "_")
-			host_power_tag = "power_val-" + d["hostname"].replace(".", "_")
 
 			if self.host_act_check[host]:
+				self.clstat.set_host_act(host)
 				ipmiman = IPMIManager(d["ipmi_ip"], d["ipmi_user"], d["ipmi_pass"], d["if_type"])
-				ss[host_power_tag] = ipmiman.getCurrentPower()
+				power = ipmiman.getCurrentPower()
 				if ipmiman.isError():
-					ss[host_power_tag] = f"/* {ipmiman.getCause()} */"
+					power = f"/* {ipmiman.getCause()} */"
+					self.clstat.set_host_power(host, power)
 				else:
-					total_power += ss[host_power_tag]
-					total_hosts += 1
+					self.clstat.set_host_power(host, power)
+				if self.record_data:
+					self.drec.set_record_data("power:"+host, power)
 			else:
-				ss[host_power_tag] = "n/a"
+				self.clstat.unset_host_act(host)
+				power = "n/a"
+				self.clstat.set_host_power(host, power)
 
-			self.host_power_field[host].text(self.power_field_format.format(ss.get(host_power_tag)))
-			
-			if skipped_tag in ss:
-				if ss[skipped_tag] != self.host_act_check[host]:
-					host_toggle_changed = True
-			ss[skipped_tag] = self.host_act_check[host]
+			self.host_power_field[host].text(self.power_field_format.format(power))
 
-		ss[self.clstnh_tag] = total_hosts
-		ss[self.clstpw_tag] = total_power
+		if self.record_data:
+			t = datetime.now()
+			self.drec.set_record_data("power:total", self.clstat.total_power())
+			self.drec.set_record_datetime(t)
+			self.drec.inc_id()
 
-		self.total_hosts_field.text(self.total_hosts_field_format.format(ss.get(self.clstnh_tag)))
-		self.total_power_field.text(self.power_field_format.format(ss.get(self.clstpw_tag)))
+		self.total_hosts_field.text(self.total_hosts_field_format.format(self.clstat.total_nhost()))
+		self.total_power_field.text(self.power_field_format.format(self.clstat.total_power()))
 
 		if not self.auto_refresh_toggle:
 			ss["auto_refresh_toggle"] = False
@@ -283,7 +303,7 @@ class ClusterWattPage(ClusterBasePage):
 				init_refresh = True
 			if ss["interval_error_correction"] != self.interval_error_correction:
 				init_refresh = True
-			if host_toggle_changed:
+			if self.clstat.are_hosts_touched():
 				init_refresh = True
 
 			ss["target_interval"] = self.target_interval

@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+
+import pandas as pd
+from streamlit import session_state as ss
+from datetime import datetime
+
+class PageStatisticsSessionStateInterface(object):
+	def __init__(self, cluster_watt_page_obj):
+		self.obj = cluster_watt_page_obj
+		self.last_tag = self.obj.get_urlpath() + "_page_lastupdated"
+		self.duration_tag = self.obj.get_urlpath() + "_page_duration"
+		if not self.duration_tag in ss:
+			ss[self.duration_tag] = 0.0
+		if not self.last_tag in ss:
+			ss[self.last_tag] = "n/a"
+
+	def set_lastup(self):
+		ss[self.last_tag] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+	def lastup(self):
+		return ss[self.last_tag]
+
+	def set_duration(self, seconds):
+		ss[self.duration_tag] = seconds
+
+	def duration(self):
+		return ss[self.duration_tag]
+
+class ClusterStatisticsSessionStateInterface(object):
+	def __init__(self, cluster_watt_page_obj):
+		self.obj = cluster_watt_page_obj
+		self.power_tag = self.obj.get_urlpath() + "_cluster_total_power"
+		self.nhost_tag = self.obj.get_urlpath() + "_cluster_n_hosts"
+		if not self.power_tag in ss:
+			ss[self.power_tag] = 0
+		if not self.nhost_tag in ss:
+			ss[self.nhost_tag] = 0
+		self.host_act_tag_prefix = self.obj.get_urlpath() + "_cluster_host_act-"
+		self.host_power_tag_prefix = self.obj.get_urlpath() + "_cluster_host_power-"
+		self.act_tagset_tag = self.obj.get_urlpath() + "_cluster_host_act_tags"
+		self.power_tagset_tag = self.obj.get_urlpath() + "_cluster_host_power_tags"
+		if not self.act_tagset_tag in ss:
+			ss[self.act_tagset_tag] = set()
+		if not self.power_tagset_tag in ss:
+			ss[self.power_tagset_tag] = set()
+		self.hosts_touched = False
+
+	def _host_power_tag(self, host:str) -> str:
+		tag = self.host_power_tag_prefix + host.replace(".", "_")
+		ss[self.power_tagset_tag].add(tag)
+		return tag
+
+	def _host_act_tag(self, host:str) -> str:
+		tag = self.host_act_tag_prefix + host.replace(".", "_")
+		ss[self.act_tagset_tag].add(tag)
+		return tag
+
+	def set_host_power(self, host:str, power:float|str):
+		tag = self._host_power_tag(host)
+		ss[tag] = power
+
+	def host_power(self, host:str) -> float|str:
+		tag = self._host_power_tag(host)
+		if not tag in ss:
+			ss[tag] = "n/a"
+		return ss[tag]
+
+	def total_power(self) -> float:
+		total = 0.0
+		for tag in ss[self.power_tagset_tag]:
+			if ss[tag] is None:
+				continue
+			try:
+				total += ss[tag]
+			except TypeError:
+				pass
+		return total
+
+	def init_host_act(self, host:str):
+		tag = self._host_act_tag(host)
+		if not tag in ss:
+			ss[tag] = False
+
+	def set_host_act(self, host:str):
+		self.init_host_act(host)
+		tag = self._host_act_tag(host)
+		if ss[tag] == False:
+			self.hosts_touched = True
+		ss[tag] = True
+
+	def unset_host_act(self, host:str):
+		self.init_host_act(host)
+		tag = self._host_act_tag(host)
+		if ss[tag] == True:
+			self.hosts_touched = True
+		ss[tag] = False
+
+	def is_host_act(self, host:str) -> bool:
+		self.init_host_act(host)
+		tag = self._host_act_tag(host)
+		return ss[tag]
+
+	def is_host_skipped(self, host:str) -> bool:
+		tag = self._host_act_tag(host)
+		return not self.is_host_act(tag)
+	
+	def are_hosts_touched(self):
+		return self.hosts_touched
+
+	def total_nhost(self) -> int:
+		nhost = 0
+		for tag in ss[self.act_tagset_tag]:
+			if ss[tag] == True:
+				nhost += 1
+		return nhost
+
+	def clear_host_power(self):
+		for tag in ss[self.power_tagset_tag]:
+			ss[tag] = "n/a"
+
+	def clear_host_act(self):
+		for tag in ss[self.act_tagset_tag]:
+			ss[tag] = False
+
+	def clear_touched(self):
+		self.hosts_touched = False
+
+
+class DataRecorderSessionStateInterface(object):
+	def __init__(self, cluster_watt_page_obj):
+		self.obj = cluster_watt_page_obj
+		self.id_tag = self.obj.get_urlpath() + "_drec_id"
+		self.data_tag = self.obj.get_urlpath() + "_drec_df"
+		self.since_tag = self.obj.get_urlpath() + "_drec_since"
+
+	def get_id(self) -> int:
+		if not self.id_tag in ss:
+			self.reset_id()
+		return ss[self.id_tag]
+
+	def reset_id(self):
+		ss[self.id_tag] = 0
+
+	def inc_id(self, count:int=1):
+		ss[self.id_tag] += count
+
+	def get_data_df(self) -> pd.DataFrame:
+		if not self.data_tag in ss:
+			ss[self.data_tag] = pd.DataFrame()
+		return ss[self.data_tag]
+
+	def reset_data(self):
+		ss[self.data_tag] = pd.DataFrame()
+		ss[self.since_tag] = None
+
+	def set_record_data(self, name:str, val:float):
+		df = self.get_data_df()
+		i = self.get_id()
+		df.loc[i, name] = val
+	
+	def set_record_datetime(self, dtobj: datetime):
+		if ss.get(self.since_tag) == None:
+			ss[self.since_tag] = dtobj
+		df = self.get_data_df()
+		i = self.get_id()
+		df.loc[i, "time:year"] = dtobj.year
+		df.loc[i, "time:month"] = dtobj.month
+		df.loc[i, "time:day"] = dtobj.day
+		df.loc[i, "time:hour"] = dtobj.hour
+		df.loc[i, "time:minute"] = dtobj.minute
+		df.loc[i, "time:second"] = dtobj.second + dtobj.microsecond / 1000000
+
+	def reset(self):
+		self.reset_data()
+		self.reset_id()
+
+	def to_download(self):
+		return self.get_data_df().to_csv().encode("utf-8")
+	
+	def get_fname(self) -> str:
+		ts = ss.get(self.since_tag)
+		if ts is not None:
+			ts = ss[self.since_tag].strftime("%Y%m%d_%H%M%S")
+		return f"records_since_{ts}.csv"
