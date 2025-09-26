@@ -2,15 +2,23 @@
 
 import time
 import streamlit as st
+from pathlib import Path
 
 from page_index import index, debug_state
 from page_ipmipower import get_cluster_page_list as get_cluster_power_page_list
 from page_ipmiwatt import get_cluster_page_list as get_cluster_watt_page_list
 from page_udhcpd import dhcp_monitor
 
-debug_pages = True
+debug_pages = False
+
+def check_debug():
+	global debug_pages
+	if Path("./DEBUG").exists():
+		debug_pages = True
 
 def main():
+	check_debug()
+
 	pmpages = get_cluster_power_page_list()
 	pcpages = get_cluster_watt_page_list()
 

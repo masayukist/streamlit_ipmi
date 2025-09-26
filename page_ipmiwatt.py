@@ -56,9 +56,11 @@ class Averager(object):
 			return avg
 		self.hist_take = sorted(self.hist)
 		edgenum = int(self.num_outliers / 2)
-		self.hist_take = self.hist_take[edgenum:-edgenum]
-		self.m = sum(self.hist_take)
+		self.hist_take = self.hist_take[edgenum:-(edgenum+1)]
 		self.c = len(self.hist_take)
+		if self.c == 0:
+			return 0.0
+		self.m = sum(self.hist_take)
 		avg = self.m/self.c
 		return avg
 	
@@ -95,6 +97,58 @@ from SessionStateInterface import (
 	PageStatisticsSessionStateInterface
 )
 
+class PIDController(object):
+	def __init__(self, kp:float, ki:float, kd:float, hist_limit=10):
+		self.kp = kp
+		self.ki = ki
+		self.kd = kd
+
+		self.error_hist_tag = "PIDCorrector_error_hist"
+		if not "PIDCorrector_error_hist" in ss:
+			ss[self.error_hist_tag] = []
+		self.error_hist = ss[self.error_hist_tag]
+		self.hist_limit = hist_limit
+
+	def put_data(self, goal:float, current:float) -> float:
+		error = goal - current
+		self.put_error(error)
+
+	def get_correction(self) -> float:
+		m = self.kp * self.error_latest() + self.ki * self.error_avg() + self.kd * self.error_diff()
+		return m
+
+	def put_error(self, error:float):
+		self.error_hist.append(error)
+		if len(self.error_hist) > self.hist_limit:
+			diff = len(self.error_hist) - self.hist_limit
+			self.error_hist = self.error_hist[diff:]
+		ss[self.error_hist_tag] = self.error_hist
+
+	def error_latest(self) -> float:
+		try:
+			return self.error_hist[-1]
+		except IndexError:
+			return 0.0
+
+	def error_avg(self) -> float:
+		try:
+			return self.error_sum() / len(self.error_hist)
+		except ValueError:
+			return 0.0
+
+	def error_sum(self) -> float:
+		return sum(self.error_hist)
+
+	def error_diff(self) -> float:
+		try:
+			return self.error_hist[-1] - self.error_hist[-2]
+		except IndexError:
+			return 0.0
+
+	def clear(self):
+		ss[self.error_hist_tag] = []
+		ss.error_hist = ss[self.error_hist_tag]
+
 class ClusterWattPage(ClusterBasePage):
 
 	def get_title(self):
@@ -108,44 +162,38 @@ class ClusterWattPage(ClusterBasePage):
 		self.exec_logic()
 
 	def init_session_state(self):
-		if not "stat_outliers" in ss:
-			ss["stat_outliers"] = 10
-		if not "stat_samples" in ss:
-			ss["stat_samples"] = 20
-
-		st_o = ss["stat_outliers"]
-		st_s = ss["stat_samples"]
-
-		if not "ar_intl" in ss:
-			ss["ar_intl"] = Averager(st_s, st_o, 3)
-		if not "ar_dura" in ss:
-			ss["ar_dura"] = Averager(st_s, st_o, 3)
-		if not "ar_tgte" in ss:
-			ss["ar_tgte"] = Averager(st_s, st_o, 3)
-		if not "auto_refresh_toggle" in ss:
-			ss["auto_refresh_toggle"] = False
-		if not "auto_refresh_firstperiod" in ss:
-			ss["auto_refresh_firstperiod"] = False
-
-		if not "target_interval" in ss:
-			ss["target_interval"] = 0.0
-		if not "interval_error_correction" in ss:
-			ss["interval_error_correction"] = 0.0
-
-		if not "auto_iec_amount" in ss:
-			ss["auto_iec_amount"] = 0.0
-		if not "auto_iec_interval_count" in ss:
-			ss['auto_iec_interval_count'] = 0
-		if not "manual_duration" in ss:
-			ss["manual_duration"] = 0.0
-
 		if not hasattr(self, "drec"):
 			self.drec = DataRecorderSessionStateInterface(self)
 		if not hasattr(self, "clstat"):
 			self.clstat = ClusterStatisticsSessionStateInterface(self)
 		if not hasattr(self, "pagestat"):
 			self.pagestat = PageStatisticsSessionStateInterface(self)
-		
+
+		pss = PageStatisticsSessionStateInterface(self)
+
+		if not "stat_outliers" in pss:
+			pss["stat_outliers"] = 0
+		if not "stat_samples" in pss:
+			pss["stat_samples"] = 10
+
+		st_o = pss["stat_outliers"]
+		st_s = pss["stat_samples"]
+
+		if not "ar_intl" in pss:
+			pss["ar_intl"] = Averager(st_s, st_o, 3)
+		if not "ar_dura" in pss:
+			pss["ar_dura"] = Averager(st_s, st_o, 3)
+		if not "ar_tgte" in pss:
+			pss["ar_tgte"] = Averager(st_s, st_o, 3)
+
+		if not "target_interval" in pss:
+			pss["target_interval"] = 0.0
+		if not "interval_error_correction" in pss:
+			pss["interval_error_correction"] = 0.0
+
+		if not "auto_iec_amount" in pss:
+			pss["auto_iec_amount"] = 0.0
+
 		#formats
 		self.total_hosts_field_format = "({} machines)"
 		self.power_field_format = "{} W"
@@ -154,13 +202,15 @@ class ClusterWattPage(ClusterBasePage):
 		self.tgterror_field_format = "{} sec."
 
 		# proxy
-		self.ar_intl = ss["ar_intl"]
-		self.ar_dura = ss["ar_dura"]
-		self.ar_tgte = ss["ar_tgte"]
+		self.ar_intl = pss["ar_intl"]
+		self.ar_dura = pss["ar_dura"]
+		self.ar_tgte = pss["ar_tgte"]
 
 		self.since_date_tag = self.get_urlpath() + "_auto_since_date"
 
 	def ui_render(self):
+		pss = PageStatisticsSessionStateInterface(self)
+
 		# page's UI
 		st.header(f"Watt Monitor in {self.get_title()}")
 
@@ -169,7 +219,7 @@ class ClusterWattPage(ClusterBasePage):
 				self.auto_refresh_toggle = st.toggle("Auto refresh")
 
 			with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
-				ar_tgt = ss.get("ar_tgt") if ss.get("ar_tgt") else 3.0
+				ar_tgt = pss.get("ar_tgt") if pss.get("ar_tgt") else 1.0
 				self.target_interval = st.number_input(
 					"Interval of auto refresh in seconds (target value)",
 					value=ar_tgt, placeholder="Type a number...", min_value=1.0, step=1.0, format="%.3f")
@@ -204,10 +254,7 @@ class ClusterWattPage(ClusterBasePage):
 						self.tgterror_field = st.text(self.tgterror_field_format.format(self.ar_tgte.get_str()))
 					with st.container(horizontal=True):
 						st.caption(f"Amount of auto error correction")
-						st.text(f"{ss['auto_iec_amount']:.3f} sec.")
-					with st.container(horizontal=True):
-						st.caption(f"Next change after:")
-						st.text(f"{20 - ss['auto_iec_interval_count']} refreshes")
+						st.text(f"{pss['auto_iec_amount']:.3f} sec.")
 
 		with st.expander(label="Recording"):
 			with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
@@ -222,8 +269,8 @@ class ClusterWattPage(ClusterBasePage):
 
 		with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="left"):
 			refresh = st.button("Manual refresh", disabled=self.auto_refresh_toggle)
-			self.lastupdate_field = st.text(f"Last-updated: {self.pagestat.lastup()}")
-			self.manualdura_field = st.text(f"Duration: {self.pagestat.duration():.3f} sec.")
+			self.lastupdate_field = st.text(f"Last-updated: {pss.lastup()}")
+			self.manualdura_field = st.text(f"Duration: {pss.duration():.3f} sec.")
 
 		if self.auto_refresh_toggle and self.ar_dura.get() is not None and float(self.ar_dura.get()) > self.target_interval:
 			st.error("The actual duration overcomes the target interval. Please consider increasing the target interval.")
@@ -254,12 +301,14 @@ class ClusterWattPage(ClusterBasePage):
 		self.manualdura_field.text(f"Duration: {self.pagestat.duration():.3f} sec.")
 
 	def exec_logic(self):
+		pss = PageStatisticsSessionStateInterface(self)
+
 		if self.reset_recorded_data:
 			self.drec.reset()
 			st.rerun()
 
-		self.pagestat.set_lastup()
-		self.lastupdate_field.text(f"Last-updated: {self.pagestat.lastup()}")
+		pss.set_lastup()
+		self.lastupdate_field.text(f"Last-updated: {pss.lastup()}")
 
 		self.clstat.clear_touched()
 
@@ -294,71 +343,71 @@ class ClusterWattPage(ClusterBasePage):
 		self.total_power_field.text(self.power_field_format.format(self.clstat.total_power()))
 
 		if not self.auto_refresh_toggle:
-			ss["auto_refresh_toggle"] = False
+			pss.unset_autoref()
 			self.finish_duration_measurement()
 		else:
 			init_refresh = False
-			if not ss["auto_refresh_toggle"]:
+			if not pss.autoref():
 				init_refresh = True
-			ss["auto_refresh_toggle"] = True
+			pss.set_autoref()
 
-			if ss["target_interval"] != self.target_interval:
+			if pss["target_interval"] != self.target_interval:
 				init_refresh = True
-			if ss["interval_error_correction"] != self.interval_error_correction:
+			if pss["interval_error_correction"] != self.interval_error_correction:
 				init_refresh = True
 			if self.clstat.are_hosts_touched():
 				init_refresh = True
 
-			ss["target_interval"] = self.target_interval
-			ss["interval_error_correction"] = self.interval_error_correction
+			pss["target_interval"] = self.target_interval
+			pss["interval_error_correction"] = self.interval_error_correction
+
+			if not hasattr(self, "pid"):
+				self.pidcon = PIDController(0.1, 0.05, 0.15)
 
 			if init_refresh:
-				ss[self.since_date_tag] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-				ss["duration_start_previous"] = None
+				pss[self.since_date_tag] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+				pss["duration_start_previous"] = None
 				self.since_field.text(f"{ss.get(self.since_date_tag)}")
 				self.ar_intl.clear()
 				self.ar_dura.clear()
 				self.ar_tgte.clear()
-				ss["auto_iec_amount"] = 0.0
-				ss["auto_iec_interval_count"] = 0
 				self.duration_field.text(self.duration_field_format.format(self.ar_dura.get_str()))
 				self.interval_field.text(self.interval_field_format.format(self.ar_intl.get_str()))
 				self.tgterror_field.text(self.tgterror_field_format.format(self.ar_tgte.get_str()))
 
-			if ss["duration_start_previous"] != None:
-				logic_interval = self.duration_start_time - ss["duration_start_previous"]
-				self.ar_intl.put(logic_interval.total_seconds())
-				self.interval_field.text(self.interval_field_format.format(self.ar_intl.get_str()))
-				self.ar_tgte.put(self.target_interval - logic_interval.total_seconds())
-				self.tgterror_field.text(self.tgterror_field_format.format(self.ar_tgte.get_str()))
-			ss["duration_start_previous"] = self.duration_start_time
-
-			auto_correct_firstperiod = False
+			init_auto_correct = False
 			if self.auto_correct_toggle:
-				if not ss["auto_correct"]:
-					auto_correct_firstperiod = True
-				ss["auto_correct"] = True
+				if not pss["auto_correct"]:
+					init_auto_correct = True
+				pss["auto_correct"] = True
 			else:
-				ss["auto_correct"] = False
-				ss["auto_iec_amount"] = 0.0
-				
-			if auto_correct_firstperiod:
-				ss["auto_iec_amount"] = self.ar_tgte.get()
-				ss["auto_iec_interval_count"] = 0
+				pss["auto_correct"] = False
 
+			if init_auto_correct:
+				self.pidcon.clear()
+				pss["auto_iec_amount"] = 0.0
+
+			if pss["duration_start_previous"] != None:
+				self.interval = self.duration_start_time - pss["duration_start_previous"]
+				self.ar_intl.put(self.interval.total_seconds())
+				self.interval_field.text(self.interval_field_format.format(self.ar_intl.get_str()))
+				self.ar_tgte.put(self.interval.total_seconds() - self.target_interval)
+				self.tgterror_field.text(self.tgterror_field_format.format(self.ar_tgte.get_str()))
+				self.pidcon.put_data(self.target_interval, self.interval.total_seconds())
+			pss["duration_start_previous"] = self.duration_start_time
+
+				
 			seconds = self.target_interval + self.interval_error_correction
 
-			if ss["auto_correct"]:
-				if ss["auto_iec_interval_count"] >= 20:
-					ss["auto_iec_amount"] += self.ar_tgte.get()
-					ss["auto_iec_interval_count"] = 0
-				seconds += ss["auto_iec_amount"]
-				ss["auto_iec_interval_count"] += 1
+			if pss["auto_correct"]:
+				pss["auto_iec_amount"] += self.pidcon.get_correction()
+				seconds += pss["auto_iec_amount"]
+				print(f"{pss["auto_iec_amount"]:.4f}, {self.pidcon.get_correction():+.4f}")
 
 			if seconds < 0:
 				seconds = 0
-				ss["auto_iec_amount"] = 0.0
-				ss["interval_error_correction"] = 0.0
+				pss["auto_iec_amount"] = 0.0
+				pss["interval_error_correction"] = 0.0
 
 			self.finish_duration_measurement()
 
