@@ -35,17 +35,7 @@ def readme1st():
 	st.markdown(note_markdown)
 
 from IPMIManager import IPMIManager
-import pings
-
-
-class PingManager(object):
-	def __init__(self, ip):
-		self.ip = ip
-
-	def is_reached(self):
-		self.pingobj = pings.Ping()
-		self.ret = self.pingobj.ping(self.ip)
-		return self.ret.is_reached()
+from PingManager import PingManager
 
 class MachineStatus(object):
 	def __init__(self, ipmiman, pingman):
@@ -117,6 +107,19 @@ class MachineStatus(object):
 				self.set_error(self.ipmiman.getCause())
 			else:
 				self.set_machine_down()
+
+from ClusterBasePage import ClusterBasePage
+
+class ClusterPowerPage(ClusterBasePage):
+	def get_title(self):
+		return self.title_str
+
+	def render(self):
+		st.header(self.get_title())
+		if self.note_str:
+			st.markdown(f"Note: {self.note_str}")
+		for d in self.get_hosts_dic():
+			single_host_container(d)
 
 def single_host_container(hostdic):
 	name = hostdic["hostname"]
@@ -191,99 +194,3 @@ def single_host_container(hostdic):
 			status.markdown(machine_status)
 			if machine_status.get_timestamp_str():
 				lastupdate.badge(f"Get status at {machine_status.get_timestamp_str()}",icon=":material/check:", color="grey")
-
-import configparser
-from pathlib import Path
-from streamlit import session_state as ss
-
-class ClusterBasePage(object):
-	def __init__(self, inifile):
-		self.inifile = inifile
-		self.parse_data()
-		self.avg_samples = 10
-		self.avg_outliers = 4
-		self.urlpath_prefix = ""
-		self.urlpath_suffix = ""
-
-	def set_urlpath_prefix(self, s):
-		self.urlpath_prefix = s
-
-	def set_urlpath_suffix(self, s):
-		self.urlpath_suffix = s
-
-	def get_urlpath(self):
-		return self.urlpath_prefix + Path(self.inifile).stem + self.urlpath_suffix
-
-	def parse_data(self):
-		if not Path(self.inifile).exists():
-			self.title_str = "Error"
-			self.note_str = f"There is no file {self.inifile}"
-			self.hosts_dic = []
-			return
-
-		parser = configparser.ConfigParser()
-		parser.read(self.inifile)
-
-		self.hosts_dic = []
-		for x in parser.sections():
-			if x == "Page":
-				continue
-			h = {}
-			h["hostname"] = x
-			h["ip"] = parser[x]["ip"]
-			h["ipmi_ip"] = parser[x]["ipmi_ip"]
-			h["ipmi_user"] = parser[x]["ipmi_user"]
-			h["ipmi_pass"] = parser[x]["ipmi_pass"]
-			h["if_type"] = parser[x]["if_type"]
-			h["note"] = parser[x].get("note", None)
-			h["disabled"] = parser[x].getboolean("disabled", False)
-			self.hosts_dic.append(h)
-
-		try:
-			self.title_str = parser["Page"]['title']
-		except:
-			self.title_str = "Somewhere"
-		try:
-			self.note_str = parser['Page']['note']
-		except KeyError:
-			self.note_str = None
-
-	def render(self):
-		raise NotImplementedError
-
-	def get_title(self):
-		raise NotImplementedError
-
-class ClusterPowerPage(ClusterBasePage):
-	def get_title(self):
-		return self.title_str
-
-	def render(self):
-		st.header(self.get_title())
-		if self.note_str:
-			st.markdown(f"Note: {self.note_str}")
-		for d in self.hosts_dic:
-			single_host_container(d)
-
-def get_ini_files():
-	curdir = Path(".")
-	inifiles_name = list(curdir.glob('*.ini'))
-	st.session_state["inifiles_name"] = inifiles_name
-	return sorted(inifiles_name)
-
-def get_cluster_page_obj():
-	inifiles_name = get_ini_files()
-	cluster_objlist = []
-	for fname in inifiles_name:
-		cluster_objlist.append(ClusterPowerPage(fname))
-	return cluster_objlist
-
-def get_cluster_page_list():
-	cluster_objs = get_cluster_page_obj()
-	pmpages = []
-	pmpages.append(st.Page(readme1st, title="Readme 1st"))
-	for p in cluster_objs:
-		p.set_urlpath_prefix("powerman_")
-		pmpages.append(st.Page(p.render, title=p.get_title(), url_path=p.get_urlpath()))
-	return pmpages
-

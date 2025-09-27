@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-import streamlit as st
-from streamlit import session_state as ss
-from pathlib import Path
 from datetime import datetime
 import time
-
 import numpy
-import pandas as pd
+
+import streamlit as st
 
 class Averager(object):
 	def __init__(self, num, num_outliers, precision):
@@ -90,64 +87,13 @@ class Averager(object):
 		self.hist_avg = []
 		self.put_count = 0
 
-from page_ipmipower import ClusterBasePage, IPMIManager
+from ClusterPowerPage import ClusterBasePage, IPMIManager
 from SessionStateInterface import (
-	DataRecorderSessionStateInterface,
-	ClusterStatisticsSessionStateInterface,
-	PageStatisticsSessionStateInterface
+	DataRecorderInterface,
+	ClusterStatisticsInterface,
+	PageStatisticsInterface
 )
-
-class PIDController(object):
-	def __init__(self, kp:float, ki:float, kd:float, hist_limit=10):
-		self.kp = kp
-		self.ki = ki
-		self.kd = kd
-
-		self.error_hist_tag = "PIDCorrector_error_hist"
-		if not "PIDCorrector_error_hist" in ss:
-			ss[self.error_hist_tag] = []
-		self.error_hist = ss[self.error_hist_tag]
-		self.hist_limit = hist_limit
-
-	def put_data(self, goal:float, current:float) -> float:
-		error = goal - current
-		self.put_error(error)
-
-	def get_correction(self) -> float:
-		m = self.kp * self.error_latest() + self.ki * self.error_avg() + self.kd * self.error_diff()
-		return m
-
-	def put_error(self, error:float):
-		self.error_hist.append(error)
-		if len(self.error_hist) > self.hist_limit:
-			diff = len(self.error_hist) - self.hist_limit
-			self.error_hist = self.error_hist[diff:]
-		ss[self.error_hist_tag] = self.error_hist
-
-	def error_latest(self) -> float:
-		try:
-			return self.error_hist[-1]
-		except IndexError:
-			return 0.0
-
-	def error_avg(self) -> float:
-		try:
-			return self.error_sum() / len(self.error_hist)
-		except ValueError:
-			return 0.0
-
-	def error_sum(self) -> float:
-		return sum(self.error_hist)
-
-	def error_diff(self) -> float:
-		try:
-			return self.error_hist[-1] - self.error_hist[-2]
-		except IndexError:
-			return 0.0
-
-	def clear(self):
-		ss[self.error_hist_tag] = []
-		ss.error_hist = ss[self.error_hist_tag]
+from PIDController import PIDController
 
 class ClusterWattPage(ClusterBasePage):
 
@@ -157,24 +103,27 @@ class ClusterWattPage(ClusterBasePage):
 	def render(self):
 		self.duration_start_time = datetime.now()
 
-		self.init_session_state()
-		self.ui_render()
-		self.exec_logic()
+		self.render_init()
+		self.render_ui()
+		self.render_logic()
 
-	def init_session_state(self):
+	def render_init(self):
 		if not hasattr(self, "drec"):
-			self.drec = DataRecorderSessionStateInterface(self)
+			self.drec = DataRecorderInterface(self)
 		if not hasattr(self, "clstat"):
-			self.clstat = ClusterStatisticsSessionStateInterface(self)
+			self.clstat = ClusterStatisticsInterface(self)
 		if not hasattr(self, "pagestat"):
-			self.pagestat = PageStatisticsSessionStateInterface(self)
+			self.pagestat = PageStatisticsInterface(self)
 
-		pss = PageStatisticsSessionStateInterface(self)
+		pss = PageStatisticsInterface(self)
 
 		if not "stat_outliers" in pss:
 			pss["stat_outliers"] = 0
 		if not "stat_samples" in pss:
 			pss["stat_samples"] = 10
+
+		pss["stat_outliers"] = 0
+		pss["stat_samples"] = 10
 
 		st_o = pss["stat_outliers"]
 		st_s = pss["stat_samples"]
@@ -186,11 +135,15 @@ class ClusterWattPage(ClusterBasePage):
 		if not "ar_tgte" in pss:
 			pss["ar_tgte"] = Averager(st_s, st_o, 3)
 
+		if not "interval" in pss:
+			pss["interval"] = 0.0
 		if not "target_interval" in pss:
 			pss["target_interval"] = 0.0
 		if not "interval_error_correction" in pss:
 			pss["interval_error_correction"] = 0.0
 
+		if not "auto_since" in pss:
+			pss["auto_since"] = None
 		if not "auto_iec_amount" in pss:
 			pss["auto_iec_amount"] = 0.0
 
@@ -206,10 +159,11 @@ class ClusterWattPage(ClusterBasePage):
 		self.ar_dura = pss["ar_dura"]
 		self.ar_tgte = pss["ar_tgte"]
 
-		self.since_date_tag = self.get_urlpath() + "_auto_since_date"
+		self.host_act_check = {}
+		self.host_power_field = {}
 
-	def ui_render(self):
-		pss = PageStatisticsSessionStateInterface(self)
+	def render_ui(self):
+		pss = PageStatisticsInterface(self)
 
 		# page's UI
 		st.header(f"Watt Monitor in {self.get_title()}")
@@ -239,10 +193,13 @@ class ClusterWattPage(ClusterBasePage):
 					st.write("Statistics of auto refresh")
 					with st.container(horizontal=True):
 						st.caption("Since")
-						self.since_field = st.text(f"{ss.get(self.since_date_tag)}")
+						self.since_field = st.text(f"{pss["auto_since"]}")
 					with st.container(horizontal=True):
 						st.caption("Actual duration (avg.)")
 						self.duration_field = st.text(self.duration_field_format.format(self.ar_dura.get_str()))
+					with st.container(horizontal=True):
+						st.caption("Actual interval (latest)")
+						self.curinterval_field = st.text(self.interval_field_format.format(pss["interval"]))
 					with st.container(horizontal=True):
 						st.caption("Actual interval (avg.)")
 						self.interval_field = st.text(self.interval_field_format.format(self.ar_intl.get_str()))
@@ -282,9 +239,7 @@ class ClusterWattPage(ClusterBasePage):
 			self.total_hosts_field = st.text(self.total_hosts_field_format.format(self.clstat.total_nhost()))
 			self.total_power_field = st.text(self.power_field_format.format(self.clstat.total_power()))
 
-		self.host_act_check = {}
-		self.host_power_field = {}
-		for d in self.hosts_dic:
+		for d in self.get_hosts_dic():
 			host = d["hostname"]
 
 			with st.container(horizontal=True, border=True, horizontal_alignment="distribute"):
@@ -300,18 +255,12 @@ class ClusterWattPage(ClusterBasePage):
 		self.pagestat.set_duration(self.duration.total_seconds())
 		self.manualdura_field.text(f"Duration: {self.pagestat.duration():.3f} sec.")
 
-	def exec_logic(self):
-		pss = PageStatisticsSessionStateInterface(self)
-
+	def power_monitor_and_render(self):
 		if self.reset_recorded_data:
 			self.drec.reset()
 			st.rerun()
 
-		pss.set_lastup()
-		self.lastupdate_field.text(f"Last-updated: {pss.lastup()}")
-
 		self.clstat.clear_touched()
-
 		for d in self.hosts_dic:
 			host = d["hostname"]
 
@@ -326,6 +275,7 @@ class ClusterWattPage(ClusterBasePage):
 					self.clstat.set_host_power(host, power)
 				if self.record_data:
 					self.drec.set_record_data("power:"+host, power)
+
 			else:
 				self.clstat.unset_host_act(host)
 				power = "n/a"
@@ -333,23 +283,38 @@ class ClusterWattPage(ClusterBasePage):
 
 			self.host_power_field[host].text(self.power_field_format.format(power))
 
+		self.total_hosts_field.text(self.total_hosts_field_format.format(self.clstat.total_nhost()))
+		self.total_power_field.text(self.power_field_format.format(self.clstat.total_power()))
+
 		if self.record_data:
 			t = datetime.now()
 			self.drec.set_record_data("power:total", self.clstat.total_power())
 			self.drec.set_record_datetime(t)
 			self.drec.inc_id()
 
-		self.total_hosts_field.text(self.total_hosts_field_format.format(self.clstat.total_nhost()))
-		self.total_power_field.text(self.power_field_format.format(self.clstat.total_power()))
+	def render_logic(self):
+		pss = PageStatisticsInterface(self)
+
+		pss.set_lastup()
+		self.lastupdate_field.text(f"Last-updated: {pss.lastup()}")
+
+		self.power_monitor_and_render()
 
 		if not self.auto_refresh_toggle:
 			pss.unset_autoref()
 			self.finish_duration_measurement()
 		else:
 			init_refresh = False
+			init_auto_correct = False
+
 			if not pss.autoref():
 				init_refresh = True
 			pss.set_autoref()
+
+			if self.auto_correct_toggle:
+				if not pss["auto_correct"]:
+					init_auto_correct = True
+			pss["auto_correct"] = self.auto_correct_toggle
 
 			if pss["target_interval"] != self.target_interval:
 				init_refresh = True
@@ -361,13 +326,10 @@ class ClusterWattPage(ClusterBasePage):
 			pss["target_interval"] = self.target_interval
 			pss["interval_error_correction"] = self.interval_error_correction
 
-			if not hasattr(self, "pid"):
-				self.pidcon = PIDController(0.1, 0.05, 0.15)
-
 			if init_refresh:
-				pss[self.since_date_tag] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+				pss["auto_since"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 				pss["duration_start_previous"] = None
-				self.since_field.text(f"{ss.get(self.since_date_tag)}")
+				self.since_field.text(f"{pss["auto_since"]}")
 				self.ar_intl.clear()
 				self.ar_dura.clear()
 				self.ar_tgte.clear()
@@ -375,13 +337,8 @@ class ClusterWattPage(ClusterBasePage):
 				self.interval_field.text(self.interval_field_format.format(self.ar_intl.get_str()))
 				self.tgterror_field.text(self.tgterror_field_format.format(self.ar_tgte.get_str()))
 
-			init_auto_correct = False
-			if self.auto_correct_toggle:
-				if not pss["auto_correct"]:
-					init_auto_correct = True
-				pss["auto_correct"] = True
-			else:
-				pss["auto_correct"] = False
+			if not hasattr(self, "pid"):
+				self.pidcon = PIDController(0.15, 0.05, 0.1)
 
 			if init_auto_correct:
 				self.pidcon.clear()
@@ -389,48 +346,27 @@ class ClusterWattPage(ClusterBasePage):
 
 			if pss["duration_start_previous"] != None:
 				self.interval = self.duration_start_time - pss["duration_start_previous"]
+				pss["interval"] = f"{self.interval.total_seconds():.3f}"
+				self.curinterval_field.text(self.interval_field_format.format(pss["interval"]))
 				self.ar_intl.put(self.interval.total_seconds())
 				self.interval_field.text(self.interval_field_format.format(self.ar_intl.get_str()))
 				self.ar_tgte.put(self.interval.total_seconds() - self.target_interval)
 				self.tgterror_field.text(self.tgterror_field_format.format(self.ar_tgte.get_str()))
-				self.pidcon.put_data(self.target_interval, self.interval.total_seconds())
+				if self.auto_correct_toggle:
+					self.pidcon.put_data(self.target_interval, self.interval.total_seconds())
 			pss["duration_start_previous"] = self.duration_start_time
 
-				
-			seconds = self.target_interval + self.interval_error_correction
-
-			if pss["auto_correct"]:
+			if self.auto_correct_toggle:
 				pss["auto_iec_amount"] += self.pidcon.get_correction()
-				seconds += pss["auto_iec_amount"]
-				print(f"{pss["auto_iec_amount"]:.4f}, {self.pidcon.get_correction():+.4f}")
+
+			static_seconds = self.target_interval + self.interval_error_correction
+			seconds = static_seconds + pss["auto_iec_amount"]
 
 			if seconds < 0:
-				seconds = 0
+				seconds = static_seconds
 				pss["auto_iec_amount"] = 0.0
-				pss["interval_error_correction"] = 0.0
 
 			self.finish_duration_measurement()
 
 			time.sleep(seconds)
 			st.rerun()
-
-def get_ini_files():
-	curdir = Path(".")
-	inifiles_name = list(curdir.glob('*.ini'))
-	st.session_state["inifiles_name"] = inifiles_name
-	return sorted(inifiles_name)
-
-def get_cluster_page_obj():
-	inifiles_name = get_ini_files()
-	cluster_objlist = []
-	for fname in inifiles_name:
-		cluster_objlist.append(ClusterWattPage(fname))
-	return cluster_objlist
-
-def get_cluster_page_list():
-	cluster_objs = get_cluster_page_obj()
-	pmpages = []
-	for p in cluster_objs:
-		p.set_urlpath_prefix("wattmon_")
-		pmpages.append(st.Page(p.render, title=p.get_title(), url_path=p.get_urlpath()))
-	return pmpages

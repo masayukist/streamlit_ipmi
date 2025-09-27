@@ -4,60 +4,65 @@ import pandas as pd
 from streamlit import session_state as ss
 from datetime import datetime
 
-class PageStatisticsSessionStateInterface(object):
-	def __init__(self, cluster_watt_page_obj):
-		self.obj = cluster_watt_page_obj
-		self.page_tag_prefix = self.obj.get_urlpath() + "_page_"
-		self.last_tag = self.obj.get_urlpath() + "_page_lastupdated"
-		self.duration_tag = self.obj.get_urlpath() + "_page_duration"
-		self.autoref_tag = self.obj.get_urlpath() + "_page_autorefresh"
-		if not self.duration_tag in ss:
-			ss[self.duration_tag] = 0.0
-		if not self.last_tag in ss:
-			ss[self.last_tag] = "n/a"
-		if not self.autoref_tag in ss:
-			ss[self.autoref_tag] = False
-
-	def set_lastup(self):
-		ss[self.last_tag] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-	def lastup(self):
-		return ss[self.last_tag]
-
-	def set_duration(self, seconds):
-		ss[self.duration_tag] = seconds
-
-	def duration(self):
-		return ss[self.duration_tag]
-
-	def autoref(self):
-		return ss[self.autoref_tag]
-
-	def set_autoref(self):
-		ss[self.autoref_tag] = True
-
-	def unset_autoref(self):
-		ss[self.autoref_tag] = False
+class SessionStateInterface(object):
+	def _tag_prefix(self):
+		raise NotImplementedError
 
 	def __contains__(self, name):
-		page_tag = self.page_tag_prefix + name
+		page_tag = self._tag_prefix() + name
 		return page_tag in ss
 
 	def __getitem__(self, name):
-		page_tag = self.page_tag_prefix + name
+		page_tag = self._tag_prefix() + name
 		return ss[page_tag]
 
 	def __setitem__(self, name, value):
-		page_tag = self.page_tag_prefix + name
+		page_tag = self._tag_prefix() + name
 		ss[page_tag] = value
 
 	def get(self, name):
-		page_tag = self.page_tag_prefix + name
+		page_tag = self._tag_prefix() + name
 		if not page_tag in ss:
 			return None
 		return ss[page_tag]
 
-class ClusterStatisticsSessionStateInterface(object):
+
+class PageStatisticsInterface(SessionStateInterface):
+	def __init__(self, cluster_watt_page_obj):
+		self.obj = cluster_watt_page_obj
+		if not "duration" in self:
+			self["duration"] = 0.0
+		if not "lastupdated" in self:
+			self["lastupdated"] = "n/a"
+		if not "autorefresh" in self:
+			self["autorefresh"] = False
+
+	def set_lastup(self):
+		self["lastupdated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+	def lastup(self):
+		return self["lastupdated"]
+
+	def set_duration(self, seconds):
+		self["duration"] = seconds
+
+	def duration(self):
+		return self["duration"]
+
+	def autoref(self):
+		return self["autorefresh"]
+
+	def set_autoref(self):
+		self["autorefresh"] = True
+
+	def unset_autoref(self):
+		self["autorefresh"] = False
+
+	def _tag_prefix(self):
+		return self.obj.get_urlpath() + "_page_"
+
+
+class ClusterStatisticsInterface(SessionStateInterface):
 	def __init__(self, cluster_watt_page_obj):
 		self.obj = cluster_watt_page_obj
 		self.power_tag = self.obj.get_urlpath() + "_cluster_total_power"
@@ -157,7 +162,7 @@ class ClusterStatisticsSessionStateInterface(object):
 		self.hosts_touched = False
 
 
-class DataRecorderSessionStateInterface(object):
+class DataRecorderInterface(SessionStateInterface):
 	def __init__(self, cluster_watt_page_obj):
 		self.obj = cluster_watt_page_obj
 		self.id_tag = self.obj.get_urlpath() + "_drec_id"

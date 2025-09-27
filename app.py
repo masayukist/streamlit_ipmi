@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
-import time
 import streamlit as st
 from pathlib import Path
 
 from page_index import index, debug_state
-from page_ipmipower import get_cluster_page_list as get_cluster_power_page_list
-from page_ipmiwatt import get_cluster_page_list as get_cluster_watt_page_list
 from page_udhcpd import dhcp_monitor
+from ClusterWattPage import ClusterWattPage
+from ClusterPowerPage import ClusterPowerPage
 
 debug_pages = False
 
@@ -15,6 +14,34 @@ def check_debug():
 	global debug_pages
 	if Path("./DEBUG").exists():
 		debug_pages = True
+
+def get_ini_files():
+	curdir = Path(".")
+	inifiles_name = list(curdir.glob('*.ini'))
+	st.session_state["inifiles_name"] = inifiles_name
+	return sorted(inifiles_name)
+
+def get_cluster_watt_page_list():
+	inifiles_name = get_ini_files()
+	cluster_objlist = []
+	for fname in inifiles_name:
+		cluster_objlist.append(ClusterWattPage(fname))
+	pmpages = []
+	for p in cluster_objlist:
+		p.set_urlpath_prefix("wattmon_")
+		pmpages.append(st.Page(p.render, title=p.get_title(), url_path=p.get_urlpath()))
+	return pmpages
+
+def get_cluster_power_page_list():
+	inifiles_name = get_ini_files()
+	cluster_objlist = []
+	for fname in inifiles_name:
+		cluster_objlist.append(ClusterPowerPage(fname))
+	pmpages = []
+	for p in cluster_objlist:
+		p.set_urlpath_prefix("powerman_")
+		pmpages.append(st.Page(p.render, title=p.get_title(), url_path=p.get_urlpath()))
+	return pmpages
 
 def main():
 	check_debug()
