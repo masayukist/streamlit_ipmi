@@ -6,7 +6,7 @@ from pathlib import Path
 from page_index import index, debug_state
 from page_udhcpd import dhcp_monitor
 from ClusterWattPage import ClusterWattPage
-from ClusterPowerPage import ClusterPowerPage
+from ClusterPowerPage import ClusterPowerPage, readme1st
 
 debug_pages = False
 
@@ -48,6 +48,7 @@ def main():
 
 	pmpages = get_cluster_power_page_list()
 	pcpages = get_cluster_watt_page_list()
+	pmpages.insert(0, st.Page(readme1st, title="Readme1st"))
 
 	navi_structure = {
 		"": [
