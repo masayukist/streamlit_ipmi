@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas
 import datetime
 import ipaddress
+import streamlit as st
 
 table_ts = None
 table = None
@@ -13,10 +14,15 @@ def read_dhcpleases():
 	global table_ts, table, n_hosts
 
 	table = pandas.DataFrame()
+	table_ts = datetime.datetime.now()
 
 	import subprocess
-	ret = subprocess.run(['dumpleases'], capture_output=True, text=True)
-	table_ts = datetime.datetime.now()
+	try:
+		ret = subprocess.run(['dumpleases'], capture_output=True, text=True)
+	except FileNotFoundError as e:
+		st.text("dumpleases command not found")
+		return
+
 	linelist = str(ret.stdout).split("\n")
 
 	l1 = linelist[0]
@@ -41,7 +47,6 @@ def read_dhcpleases():
 	table.reset_index(inplace=True, drop=True)
 
 def dhcp_monitor():
-	import streamlit as st
 	read_dhcpleases()
 	st.title("DHCP leases")
 	with st.container(horizontal=True, vertical_alignment="center"):
@@ -49,3 +54,16 @@ def dhcp_monitor():
 		if st.button("Refresh"):
 			st.rerun()
 	st.table(table)
+
+class UDCHPMonitor(object):
+	def __init__(self):
+		pass
+
+	def get_urlpath(self):
+		return "dhcpleases"
+
+	def get_title(self):
+		return "DHCP leases"
+
+	def render(self):
+		dhcp_monitor()

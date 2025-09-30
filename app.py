@@ -4,7 +4,7 @@ import streamlit as st
 from pathlib import Path
 
 from page_index import index, debug_state
-from page_udhcpd import dhcp_monitor
+from UDHCPMonitor import UDCHPMonitor
 from ClusterWattPage import ClusterWattPage
 from ClusterPowerPage import ClusterPowerPage, readme1st
 
@@ -48,14 +48,16 @@ def main():
 
 	pmpages = get_cluster_power_page_list()
 	pcpages = get_cluster_watt_page_list()
-	pmpages.insert(0, st.Page(readme1st, title="Readme1st"))
+	pmpages.insert(0, st.Page(readme1st, title="Readme 1st"))
+
+	dhcpmon = UDCHPMonitor()
 
 	navi_structure = {
 		"": [
 			st.Page(index, title="Dashboard Home"),
 		],
 		"Network": [
-			st.Page(dhcp_monitor, title="DHCP leases"),
+			st.Page(dhcpmon.render, title=dhcpmon.get_title()),
 		],
 		"Server Power Management": pmpages,
 		"Server Watt Monitor": pcpages

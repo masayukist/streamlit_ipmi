@@ -3,7 +3,28 @@
 import configparser
 from pathlib import Path
 
-class ClusterBasePage(object):
+
+class StreamlitBasePage(object):
+	def __init__(self):
+		self.icon = None
+
+	def get_urlpath(self):
+		raise NotImplementedError
+
+	def get_title(self):
+		raise NotImplementedError
+
+	def render(self):
+		raise NotImplementedError
+
+	def set_icon(self, s):
+		self.icon = s
+
+	def get_icon(self):
+		return self.icon
+
+
+class ClusterBasePage(StreamlitBasePage):
 	def __init__(self, inifile):
 		self.inifile = inifile
 		self.parse_data()
@@ -44,6 +65,7 @@ class ClusterBasePage(object):
 			h["if_type"] = parser[x]["if_type"]
 			h["note"] = parser[x].get("note", None)
 			h["disabled"] = parser[x].getboolean("disabled", False)
+			h["power_method"] = parser[x].get("power_method", "dcmi")
 			self.hosts_dic.append(h)
 
 		try:

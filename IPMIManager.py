@@ -18,6 +18,10 @@ class IPMIManager(object):
 		self.dcmi_requested_at = None
 		self.error = False
 		self.cause = None
+		self.power_method = "dcmi"
+
+	def setPowerMethod(self, s):
+		self.power_method = s
 
 	def connect(self):
 		if self.connection:
@@ -116,10 +120,12 @@ class IPMIManager(object):
 		self.dcmi_requested_at = datetime.now()
 
 	def getCurrentPower(self):
-		self.getDcmiPowerRead()
-		if not self.dcmi_power_reading_rsp:
-			return None
-		return self.dcmi_power_reading_rsp.current_power
+		if self.power_method == "dcmi":
+			self.getDcmiPowerRead()
+			if not self.dcmi_power_reading_rsp:
+				return None
+			return self.dcmi_power_reading_rsp.current_power
+		return "No power method available"
 	
 	def getAveragePower(self):
 		self.getDcmiPowerRead()

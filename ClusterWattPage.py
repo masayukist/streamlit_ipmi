@@ -267,6 +267,7 @@ class ClusterWattPage(ClusterBasePage):
 			if self.host_act_check[host]:
 				self.clstat.set_host_act(host)
 				ipmiman = IPMIManager(d["ipmi_ip"], d["ipmi_user"], d["ipmi_pass"], d["if_type"])
+				ipmiman.setPowerMethod(d["power_method"])
 				power = ipmiman.getCurrentPower()
 				if ipmiman.isError():
 					power = f"/* {ipmiman.getCause()} */"
