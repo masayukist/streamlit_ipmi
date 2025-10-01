@@ -3,7 +3,26 @@
 import pyipmi
 import pyipmi.interfaces
 
+import subprocess
+
 from datetime import datetime
+
+
+def ipmi_command_output(ip, user, passwd, iftype, command_arg_list):
+	command_list = ["ipmitool", "-I", iftype, "-H", ip, "-U", user, "-P", passwd] + command_arg_list
+	res = subprocess.run(command_list, capture_output=True, text=True)
+	return str(res.stdout)
+
+def bravo_extract_power(ip, user, passwd, iftype):
+	output = ipmi_command_output(ip, user, passwd, iftype, ['sdr', 'type', "Power Supply"])
+	lines = output.splitlines()
+	for line in lines:
+		w = line.split("|")
+		if w[0].strip() == "Total_Power":
+			power_watt = w[4].strip().split()
+			power_val = power_watt[0]
+			return int(power_val)
+
 
 class IPMIManager(object):
 
@@ -125,6 +144,8 @@ class IPMIManager(object):
 			if not self.dcmi_power_reading_rsp:
 				return None
 			return self.dcmi_power_reading_rsp.current_power
+		if self.power_method == "bravo":
+			return bravo_extract_power(self.ip, self.user, self.passwd, self.iftype)
 		return "No power method available"
 	
 	def getAveragePower(self):
